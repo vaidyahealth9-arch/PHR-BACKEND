@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lab Report</title>
+    <style>
+        body {
+            font-family: sans-serif;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .patient-details {
+            margin-bottom: 20px;
+        }
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .results-table th, .results-table td {
+            border: 1px solid #ccc;
+            padding: 8px;
+        }
+        .status-GREEN {
+            color: green;
+        }
+        .status-RED {
+            color: red;
+        }
+        .status-AMBER {
+            color: orange;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{{ lab_name }}</h1>
+        <p>{{ lab_address }}</p>
+    </div>
+    <div class="patient-details">
+        <p><strong>Patient:</strong> {{ patient_name }}</p>
+        <p><strong>Age:</strong> {{ patient_age }}</p>
+        <p><strong>Gender:</strong> {{ patient_gender }}</p>
+        <p><strong>Order ID:</strong> {{ order_id }}</p>
+        <p><strong>Date:</strong> {{ order_date }}</p>
+        <p><strong>Referring Doctor:</strong> {{ doctor_name }}</p>
+    </div>
+    <table class="results-table">
+        <thead>
+            <tr>
+                <th>Analyte</th>
+                <th>Result</th>
+                <th>Unit</th>
+                <th>Reference Range</th>
+                <th>Status</th>
+                <th>Method</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for analyte in analytes %}
+            <tr>
+                <td>{{ analyte.name }}</td>
+                <td>{{ analyte.result }}</td>
+                <td>{{ analyte.unit }}</td>
+                <td>{{ analyte.reference_range }}</td>
+                <td class="status-{{ analyte.status_color }}">{{ analyte.status_color }}</td>
+                <td>{{ analyte.method }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

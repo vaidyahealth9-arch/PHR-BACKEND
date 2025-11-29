@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+asyncpg
+python-jose[cryptography]
+weasyprint
+pydantic
+psycopg2-binary
+alembic
+jinja2
+httpx
+python-dotenv
