@@ -23,8 +23,9 @@ class Practitioner(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     first_name: str
-    last_name: str
-    npi: str
+    last_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    prefix: Optional[str] = None
 
 
 class Organization(BaseModel):

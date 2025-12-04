@@ -189,9 +189,16 @@ async def read_records(
     current_user: models.PhrUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Find patient by phone number
+    patient = await crud.get_patient_by_phone(db, phone_number=current_user.contact_phone)
+    if not patient:
+        # Return empty list if no patient record found
+        logger.info(f"No patient record found for phone: {current_user.contact_phone}")
+        return []
+    
     records_data = await crud.get_records(
         db,
-        patient_id=current_user.patient_id,
+        patient_id=patient.id,
         search=search,
         status=status,
         from_date=from_date,
@@ -227,8 +234,13 @@ async def read_record_details(
     current_user: models.PhrUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Find patient by phone number
+    patient = await crud.get_patient_by_phone(db, phone_number=current_user.contact_phone)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient record not found")
+    
     record_details = await crud.get_record_details(
-        db, record_id=record_id, patient_id=current_user.patient_id
+        db, record_id=record_id, patient_id=patient.id
     )
     if record_details is None:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -241,8 +253,13 @@ async def download_report(
     current_user: models.PhrUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Find patient by phone number
+    patient = await crud.get_patient_by_phone(db, phone_number=current_user.contact_phone)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient record not found")
+    
     record_details = await crud.get_record_details(
-        db, record_id=record_id, patient_id=current_user.patient_id
+        db, record_id=record_id, patient_id=patient.id
     )
     if record_details is None:
         raise HTTPException(status_code=404, detail="Record not found")

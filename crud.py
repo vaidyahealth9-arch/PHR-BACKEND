@@ -15,6 +15,14 @@ async def get_user_by_phone(db: Session, phone_number: str):
     return result.scalars().first()
 
 
+async def get_patient_by_phone(db: Session, phone_number: str):
+    """Get patient record by phone number"""
+    result = await db.execute(
+        select(models.Patient).filter(models.Patient.contact_phone == phone_number)
+    )
+    return result.scalars().first()
+
+
 async def get_records(
     db: Session,
     patient_id: int,
@@ -171,56 +179,66 @@ async def get_record_details(db: Session, record_id: int, patient_id: int):
         return None
 
     patient = service_request.patient
-    organization = service_request.encounter.organization
+    
+    # Handle nullable encounter/organization
+    organization_name = "Unknown Lab"
+    if service_request.encounter and service_request.encounter.organization:
+        organization_name = service_request.encounter.organization.organization_name
+    
     practitioner = service_request.requester
 
     order_details = schemas.Record(
         order_id=service_request.id,
         display_id=service_request.local_order_value,
         date=service_request.order_date.isoformat(),
-        lab_name=organization.organization_name,
+        lab_name=organization_name,
         status=service_request.status,
-        test_names=[item.test.test_name for item in service_request.items],
+        test_names=[item.test.test_name for item in service_request.items] if service_request.items else [],
         patient=patient,
         encounter=service_request.encounter,
         requester=practitioner,
     )
 
     analytes = []
-    for obs in service_request.observations:
-        result_str = (
-            str(obs.value_numeric) if obs.value_numeric is not None else obs.value_string
-        )
-        status_color = "AMBER"
-
-        if (
-            obs.value_numeric is not None
-            and obs.reference_range
-            and obs.reference_range.low_value is not None
-            and obs.reference_range.high_value is not None
-        ):
-            if (
-                obs.reference_range.low_value
-                <= obs.value_numeric
-                <= obs.reference_range.high_value
-            ):
-                status_color = "GREEN"
-            else:
-                status_color = "RED"
-        elif obs.interpretation_code and "abnormal" in obs.interpretation_code.lower():
+    for obs in service_request.observations or []:
+        try:
+            result_str = (
+                str(obs.value_numeric) if obs.value_numeric is not None else obs.value_string
+            )
             status_color = "AMBER"
 
-        analytes.append(
-            schemas.Analyte(
-                name=obs.test_analyte.analyte_name,
-                result=result_str or "",
-                unit=obs.unit.name if obs.unit else "",
-                reference_range=obs.reference_range.text_range
-                if obs.reference_range
-                else "",
-                status_color=status_color,
-                method=obs.test_analyte.test.method,
+            if (
+                obs.value_numeric is not None
+                and obs.reference_range
+                and obs.reference_range.low_value is not None
+                and obs.reference_range.high_value is not None
+            ):
+                if (
+                    obs.reference_range.low_value
+                    <= obs.value_numeric
+                    <= obs.reference_range.high_value
+                ):
+                    status_color = "GREEN"
+                else:
+                    status_color = "RED"
+            elif obs.interpretation_code and "abnormal" in obs.interpretation_code.lower():
+                status_color = "AMBER"
+
+            analytes.append(
+                schemas.Analyte(
+                    name=obs.test_analyte.analyte_name if obs.test_analyte else "Unknown",
+                    result=result_str or "",
+                    unit=obs.unit.name if obs.unit else "",
+                    reference_range=obs.reference_range.text_range
+                    if obs.reference_range
+                    else "",
+                    status_color=status_color,
+                    method=obs.test_analyte.test.method if obs.test_analyte and obs.test_analyte.test else "",
+                )
             )
-        )
+        except Exception as e:
+            # Skip problematic observations but log the error
+            print(f"Error processing observation {obs.id}: {e}")
+            continue
 
     return schemas.RecordDetails(order_details=order_details, analytes=analytes)

@@ -41,8 +41,12 @@ class Practitioner(Base):
     __tablename__ = "practitioners"
     id = Column(Integer, primary_key=True, index=True)
     first_name = Column(String, nullable=False)
-    last_name = Column(String, nullable=False)
-    npi = Column(String, unique=True)
+    last_name = Column(String)
+    middle_name = Column(String)
+    prefix = Column(String)
+    mci_reg_no = Column(String)
+    local_identifier_system = Column(String)
+    local_identifier_value = Column(String)
 
 
 class PhrUser(Base):
