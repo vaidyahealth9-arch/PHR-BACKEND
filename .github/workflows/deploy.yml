@@ -38,12 +38,12 @@ jobs:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE }}:${{ github.sha }}
-          flags: '--allow-unauthenticated --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:phr-db-dev'
+          flags: '--allow-unauthenticated --port=8000 --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:phr-db-dev'
           env_vars: |-
             PHR_ENVIRONMENT=production
             POSTGRES_USER=postgres
             POSTGRES_DB=phr
             PHR_LIMS_BASE_URL=https://dev-api.lims.vaidyahealth.com
-          secret_env_vars: |-
+          secrets: |-
             POSTGRES_PASSWORD=phr-db-password:latest
             PHR_SECRET_KEY=phr-secret-key:latest
