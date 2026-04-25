@@ -144,6 +144,15 @@ record_storage = build_record_storage()
 app = FastAPI(title="PHR Backend API", version="1.0")
 APP_STARTED_AT = datetime.now(timezone.utc)
 
+@app.on_event("startup")
+async def startup_event():
+    from database import engine
+    from models import Base
+    logger.info("Initializing database tables...")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables initialized.")
+
 # CORS Configuration - Allow frontend to make requests
 app.add_middleware(
     CORSMiddleware,
