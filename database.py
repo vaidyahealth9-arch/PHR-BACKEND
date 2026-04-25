@@ -27,6 +27,19 @@ if raw_database_url.startswith("postgresql://"):
 else:
     DATABASE_URL = raw_database_url
 
+# Log for debugging (mask password)
+log_url = DATABASE_URL
+if ":" in log_url and "@" in log_url:
+    # Very basic masking
+    try:
+        user_pass_part = log_url.split("@")[0].split("//")[-1]
+        mask_user_pass = user_pass_part.split(":")[0] + ":****"
+        log_url = log_url.replace(user_pass_part, mask_user_pass)
+    except:
+        pass
+
+print(f"DATABASE_URL: {log_url}")
+
 SQL_ECHO = os.getenv("SQL_ECHO", "false").lower() == "true"
 
 engine = create_async_engine(DATABASE_URL, echo=SQL_ECHO, pool_pre_ping=True)
