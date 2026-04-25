@@ -1,73 +1,357 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Lab Report</title>
-    <style>
-        body {
-            font-family: sans-serif;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .patient-details {
-            margin-bottom: 20px;
-        }
-        .results-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        .results-table th, .results-table td {
-            border: 1px solid #ccc;
-            padding: 8px;
-        }
-        .status-GREEN {
-            color: green;
-        }
-        .status-RED {
-            color: red;
-        }
-        .status-AMBER {
-            color: orange;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Medical Report</title>
+  <style>
+    :root {
+      --primary: #0f4c81;
+      --primary-soft: #eaf2fb;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #dbe3ef;
+      --high: #b42318;
+      --low: #b54708;
+      --normal: #027a48;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    @page {
+      size: A4;
+      margin: 14mm;
+    }
+
+    body {
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      color: var(--text);
+      background: var(--surface);
+      line-height: 1.35;
+      font-size: 12px;
+    }
+
+    .report-shell {
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .report-header {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--primary);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    }
+
+    .report-header__top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .brand h1 {
+      font-size: 18px;
+      color: var(--primary);
+      letter-spacing: 0.2px;
+      margin-bottom: 2px;
+    }
+
+    .brand p {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .meta-chip {
+      text-align: right;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--primary-soft);
+      border: 1px solid #d5e4f7;
+      border-radius: 8px;
+      padding: 6px 8px;
+      min-width: 180px;
+    }
+
+    .meta-chip strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .section {
+      margin-bottom: 10px;
+      page-break-inside: avoid;
+    }
+
+    .section-title {
+      font-size: 13px;
+      color: var(--primary);
+      font-weight: 700;
+      margin-bottom: 6px;
+      padding-bottom: 3px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: var(--surface-soft);
+    }
+
+    .info-row {
+      display: flex;
+      gap: 6px;
+      min-height: 18px;
+    }
+
+    .label {
+      min-width: 88px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 11px;
+    }
+
+    .value {
+      color: var(--text);
+      font-size: 11.5px;
+      font-weight: 600;
+      word-break: break-word;
+    }
+
+    .summary-box,
+    .clinical-box,
+    .disclaimer-box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 11.5px;
+      color: #334155;
+      background: #fcfdff;
+    }
+
+    .disclaimer-box {
+      background: #fff9f5;
+      border-color: #fde6d7;
+      color: #7a2e0f;
+    }
+
+    .findings-wrap {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 10.5px;
+    }
+
+    thead th {
+      text-align: left;
+      color: #1d4b7d;
+      background: #eef5fd;
+      border-bottom: 1px solid var(--line);
+      font-weight: 700;
+      padding: 6px 7px;
+      white-space: nowrap;
+    }
+
+    tbody td {
+      border-top: 1px solid #edf2fa;
+      padding: 5px 7px;
+      color: #334155;
+      vertical-align: top;
+      line-height: 1.25;
+      word-wrap: break-word;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #fbfdff;
+    }
+
+    .col-test {
+      width: 31%;
+      font-weight: 600;
+      color: #1f3b5a;
+    }
+
+    .col-value {
+      width: 16%;
+      font-family: "Consolas", "Courier New", monospace;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .col-unit {
+      width: 12%;
+      color: #475569;
+    }
+
+    .col-reference {
+      width: 25%;
+      color: #475569;
+    }
+
+    .col-status {
+      width: 16%;
+    }
+
+    .status-badge {
+      display: inline-block;
+      border-radius: 999px;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      padding: 2px 7px;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+
+    .status-high {
+      color: var(--high);
+      border-color: #fecdd3;
+      background: #fff1f2;
+    }
+
+    .status-low {
+      color: var(--low);
+      border-color: #fed7aa;
+      background: #fff7ed;
+    }
+
+    .status-normal {
+      color: var(--normal);
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+    }
+
+    .footer {
+      margin-top: 8px;
+      border-top: 1px dashed var(--line);
+      padding-top: 6px;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 10px;
+    }
+
+    @media print {
+      .report-shell {
+        margin: 0;
+      }
+
+      .section,
+      .findings-wrap,
+      .info-grid {
+        page-break-inside: avoid;
+      }
+
+      /* Compact print mode to help keep ~10 findings on a single page */
+      body {
+        font-size: 11px;
+      }
+
+      thead th {
+        padding: 5px 6px;
+      }
+
+      tbody td {
+        padding: 4px 6px;
+      }
+    }
+  </style>
 </head>
 <body>
-    <div class="header">
-        <h1>{{ lab_name }}</h1>
-        <p>{{ lab_address }}</p>
-    </div>
-    <div class="patient-details">
-        <p><strong>Patient:</strong> {{ patient_name }}</p>
-        <p><strong>Age:</strong> {{ patient_age }}</p>
-        <p><strong>Gender:</strong> {{ patient_gender }}</p>
-        <p><strong>Order ID:</strong> {{ order_id }}</p>
-        <p><strong>Date:</strong> {{ order_date }}</p>
-        <p><strong>Referring Doctor:</strong> {{ doctor_name }}</p>
-    </div>
-    <table class="results-table">
-        <thead>
+  <main class="report-shell">
+    <header class="report-header">
+      <div class="report-header__top">
+        <div class="brand">
+          <h1>Medical Diagnostic Report</h1>
+          <p>Patient summary and test findings</p>
+        </div>
+        <div class="meta-chip">
+          Generated<br />
+          <strong>{{ generated_date }}</strong>
+        </div>
+      </div>
+    </header>
+
+    <section class="section">
+      <h2 class="section-title">Patient & Record Details</h2>
+      <div class="info-grid">
+        <div class="info-row"><span class="label">Patient</span><span class="value">{{ patient_name }}</span></div>
+        <div class="info-row"><span class="label">Record Type</span><span class="value">{{ record_type }}</span></div>
+        <div class="info-row"><span class="label">Title</span><span class="value">{{ title }}</span></div>
+        <div class="info-row"><span class="label">Date</span><span class="value">{{ record_date }}</span></div>
+        <div class="info-row"><span class="label">Facility</span><span class="value">{{ facility }}</span></div>
+        <div class="info-row"><span class="label">Provider</span><span class="value">{{ doctor }}</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Clinical Summary</h2>
+      <div class="summary-box">{{ summary_text }}</div>
+    </section>
+
+    {% if key_findings %}
+    <section class="section">
+      <h2 class="section-title">Test Findings</h2>
+      <div class="findings-wrap">
+        <table>
+          <thead>
             <tr>
-                <th>Analyte</th>
-                <th>Result</th>
-                <th>Unit</th>
-                <th>Reference Range</th>
-                <th>Status</th>
-                <th>Method</th>
+              <th class="col-test">Test</th>
+              <th class="col-value">Result</th>
+              <th class="col-unit">Unit</th>
+              <th class="col-reference">Reference / Notes</th>
+              <th class="col-status">Status</th>
             </tr>
-        </thead>
-        <tbody>
-            {% for analyte in analytes %}
+          </thead>
+          <tbody>
+            {% for finding in key_findings %}
             <tr>
-                <td>{{ analyte.name }}</td>
-                <td>{{ analyte.result }}</td>
-                <td>{{ analyte.unit }}</td>
-                <td>{{ analyte.reference_range }}</td>
-                <td class="status-{{ analyte.status_color }}">{{ analyte.status_color }}</td>
-                <td>{{ analyte.method }}</td>
+              <td class="col-test">{{ finding.analyte }}</td>
+              <td class="col-value">{{ finding.value }}</td>
+              <td class="col-unit">{{ finding.unit }}</td>
+              <td class="col-reference">{{ finding.clinical_note }}</td>
+              <td class="col-status">
+                <span class="status-badge status-{{ finding.status }}">{{ finding.status }}</span>
+              </td>
             </tr>
             {% endfor %}
-        </tbody>
-    </table>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="section">
+      <h2 class="section-title">Clinical Significance</h2>
+      <div class="clinical-box">{{ clinical_significance }}</div>
+    </section>
+
+    <section class="section">
+      <div class="disclaimer-box"><strong>Disclaimer:</strong> {{ disclaimer }}</div>
+    </section>
+
+    <footer class="footer">
+      <div>This report is generated by PHR for patient convenience and continuity of care.</div>
+      <div>© PHR System - {{ current_year }}</div>
+    </footer>
+  </main>
 </body>
 </html>

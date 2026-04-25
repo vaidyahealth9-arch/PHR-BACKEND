@@ -109,5 +109,10 @@ venv.bak/
 # VS Code
 .vscode/
 
-# Test database
+# Local/test databases
 test.db
+test_auth.db
+phr.db
+
+# Runtime upload artifacts
+uploads/

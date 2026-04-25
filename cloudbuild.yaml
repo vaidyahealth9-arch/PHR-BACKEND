@@ -1,0 +1,65 @@
+steps:
+  # Build backend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile.prod'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '.'
+
+  # Push backend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_NAME}:$COMMIT_SHA'
+
+  # Deploy backend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}'
+      - '--image'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--service-account'
+      - '${_RUNTIME_SA}'
+      - '--add-cloudsql-instances=${_DB_INSTANCE}'
+      - '--set-env-vars=ENVIRONMENT=${_ENVIRONMENT},CORS_ALLOW_ORIGINS=${_CORS_ALLOW_ORIGINS},APP_URL=${_APP_URL},RECORD_STORAGE_BACKEND=${_RECORD_STORAGE_BACKEND},GCS_BUCKET_NAME=${_GCS_BUCKET_NAME},GCS_UPLOAD_PREFIX=${_GCS_UPLOAD_PREFIX},LIMS_BASE_URL=${_LIMS_BASE_URL},INTERNAL_AUTH_MODE=${_INTERNAL_AUTH_MODE},INTERNAL_ALLOWED_SERVICE_ACCOUNTS=${_INTERNAL_ALLOWED_SERVICE_ACCOUNTS},SQL_ECHO=false'
+      - '--set-secrets=SECRET_KEY=${_SECRET_KEY_SECRET}:latest,DATABASE_URL=${_DATABASE_URL_SECRET}:latest,WHATSAPP_API_URL=${_WHATSAPP_API_URL_SECRET}:latest,WHATSAPP_ACCESS_TOKEN=${_WHATSAPP_ACCESS_TOKEN_SECRET}:latest,WHATSAPP_PHONE_NUMBER_ID=${_WHATSAPP_PHONE_NUMBER_ID_SECRET}:latest'
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_NAME}:$COMMIT_SHA'
+
+substitutions:
+  _REGION: 'asia-south1'
+  _AR_REPO: 'hale-phr'
+  _SERVICE_NAME: 'phr-backend'
+  _RUNTIME_SA: 'phr-backend-sa@PROJECT_ID.iam.gserviceaccount.com'
+  _DB_INSTANCE: 'PROJECT_ID:asia-south1:phr-prod-sql'
+  _ENVIRONMENT: 'production'
+  _CORS_ALLOW_ORIGINS: 'https://phr-frontend-REPLACE_ME.a.run.app'
+  _APP_URL: 'https://phr-frontend-REPLACE_ME.a.run.app'
+  _RECORD_STORAGE_BACKEND: 'gcs'
+  _GCS_BUCKET_NAME: 'phr-prod-records-REPLACE_ME'
+  _GCS_UPLOAD_PREFIX: 'uploads'
+  _LIMS_BASE_URL: 'https://hale-lims-REPLACE_ME.a.run.app'
+  _INTERNAL_AUTH_MODE: 'oidc'
+  _INTERNAL_ALLOWED_SERVICE_ACCOUNTS: 'hale-lims-sa@PROJECT_ID.iam.gserviceaccount.com'
+
+  # Secret resource names only (values stay in Secret Manager)
+  _SECRET_KEY_SECRET: 'phr-prod-secret-key'
+  _DATABASE_URL_SECRET: 'phr-prod-database-url'
+  _WHATSAPP_API_URL_SECRET: 'phr-prod-whatsapp-api-url'
+  _WHATSAPP_ACCESS_TOKEN_SECRET: 'phr-prod-whatsapp-access-token'
+  _WHATSAPP_PHONE_NUMBER_ID_SECRET: 'phr-prod-whatsapp-phone-number-id'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

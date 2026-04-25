@@ -1,0 +1,74 @@
+name: Deploy to GCP Cloud Run (Keyless)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target GitHub environment"
+        required: true
+        type: choice
+        options: [dev, prod]
+      source_ref:
+        description: "Git ref to deploy"
+        required: false
+        default: "main"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-phr-backend-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_DEPLOYER_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+      SERVICE_SUBSTITUTIONS: ${{ vars.PHR_BACKEND_SUBSTITUTIONS }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.source_ref }}
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Validate required GitHub environment variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            GCP_PROJECT_ID
+            GCP_WORKLOAD_IDENTITY_PROVIDER
+            GCP_DEPLOYER_SERVICE_ACCOUNT
+            SERVICE_SUBSTITUTIONS
+          )
+
+          for v in "${required[@]}"; do
+            if [[ -z "${!v:-}" ]]; then
+              echo "Missing required variable: $v"
+              exit 1
+            fi
+          done
+
+          gcloud config set project "${GCP_PROJECT_ID}"
+
+      - name: Submit Cloud Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud builds submit . \
+            --project "${GCP_PROJECT_ID}" \
+            --config cloudbuild.yaml \
+            --substitutions "${SERVICE_SUBSTITUTIONS}"

@@ -1,0 +1,12 @@
+__pycache__/
+**/__pycache__/
+*.pyc
+**/*.pyc
+*.pyo
+*.pyd
+.venv/
+.git/
+.gitignore
+uploads/
+**/uploads/
+phr.db

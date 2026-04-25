@@ -7,11 +7,10 @@ from sqlalchemy import (
     Numeric,
     Date,
     Text,
-    UUID as UUID_GENERIC,
+    Boolean,
 )
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.schema import PrimaryKeyConstraint
-import uuid
 
 
 Base = declarative_base()
@@ -65,18 +64,42 @@ class PhrUser(Base):
     state = Column(String(100))
     postal_code = Column(String(20))
     country = Column(String(100))
-    abha_address = Column(String(255))
-    abha_id = Column(String(255))
-    abha_id_system = Column(String(255))
-    abdm_link_status = Column(String(50))
-    abdm_status_message = Column(Text)
-    abdm_last_linked_at = Column(DateTime)
     local_mrn_system = Column(String(255))
     local_mrn_value = Column(String(255))
     organization_id = Column(Integer)
     otp = Column(String(6))
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
+
+
+class Profile(Base):
+    __tablename__ = "profiles"
+    id = Column(Integer, primary_key=True, index=True)
+    owner_user_id = Column(Integer, ForeignKey("phr_users.id"), nullable=False, index=True)
+    full_name = Column(String(150), nullable=False)
+    relationship_type = Column("relationship", String(50), nullable=False, default="self")
+    date_of_birth = Column(Date)
+    gender = Column(String(20))
+    blood_group = Column(String(10))
+    is_primary = Column(Boolean, default=False)
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+
+    owner_user = relationship("PhrUser")
+    caregivers = relationship("ProfileCaregiver", back_populates="profile", cascade="all, delete-orphan")
+
+
+class ProfileCaregiver(Base):
+    __tablename__ = "profile_caregivers"
+    id = Column(Integer, primary_key=True, index=True)
+    profile_id = Column(Integer, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    caregiver_user_id = Column(Integer, ForeignKey("phr_users.id"), nullable=False, index=True)
+    can_view = Column(Boolean, default=True)
+    can_edit = Column(Boolean, default=False)
+    created_at = Column(DateTime)
+
+    profile = relationship("Profile", back_populates="caregivers")
+    caregiver_user = relationship("PhrUser")
 
 
 class Encounter(Base):
@@ -162,9 +185,62 @@ class Observation(Base):
     reference_range = relationship("ReferenceRange")
 
 
-class DiagnosticReport(Base):
-    __tablename__ = "diagnostic_reports"
+class UploadedRecord(Base):
+    __tablename__ = "uploaded_records"
     id = Column(Integer, primary_key=True, index=True)
-    service_request_id = Column(Integer, ForeignKey("service_requests.id"), nullable=False)
-    report_text = Column(Text)
-    service_request = relationship("ServiceRequest")
+    profile_id = Column(Integer, ForeignKey("profiles.id"), nullable=False, index=True)
+    owner_user_id = Column(Integer, ForeignKey("phr_users.id"), nullable=False, index=True)
+    record_type = Column(String(50), nullable=False, default="lab_report")
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    issued_date = Column(Date)
+    source_facility = Column(String(255))
+    source_doctor = Column(String(255))
+    file_name = Column(String(255), nullable=False)
+    file_path = Column(String(1024), nullable=False)
+    mime_type = Column(String(120), nullable=False)
+    file_size_bytes = Column(Integer, nullable=False)
+    upload_status = Column(String(40), nullable=False, default="uploaded")
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+
+    profile = relationship("Profile")
+    owner_user = relationship("PhrUser")
+    ocr_result = relationship("OCRExtraction", back_populates="record", uselist=False, cascade="all, delete-orphan")
+
+
+class OCRExtraction(Base):
+    __tablename__ = "ocr_extractions"
+    id = Column(Integer, primary_key=True, index=True)
+    record_id = Column(Integer, ForeignKey("uploaded_records.id", ondelete="CASCADE"), nullable=False, index=True, unique=True)
+    status = Column(String(40), nullable=False, default="pending")
+    extracted_record_type = Column(String(50))
+    extracted_title = Column(String(255))
+    extracted_issued_date = Column(Date)
+    extracted_source_facility = Column(String(255))
+    extracted_source_doctor = Column(String(255))
+    extracted_tags = Column(String(500))
+    confidence = Column(Numeric)
+    raw_text = Column(Text)
+    is_confirmed = Column(Boolean, default=False)
+    confirmed_tags = Column(String(500))
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+
+    record = relationship("UploadedRecord", back_populates="ocr_result")
+
+
+class ShareLink(Base):
+    __tablename__ = "share_links"
+    id = Column(Integer, primary_key=True, index=True)
+    record_id = Column(Integer, ForeignKey("uploaded_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_user_id = Column(Integer, ForeignKey("phr_users.id"), nullable=False, index=True)
+    token = Column(String(255), unique=True, nullable=False, index=True)
+    recipient_email = Column(String(255))
+    access_duration_hours = Column(Integer, default=24)
+    created_at = Column(DateTime)
+    expires_at = Column(DateTime, index=True)
+    is_revoked = Column(Boolean, default=False, index=True)
+
+    record = relationship("UploadedRecord")
+    owner_user = relationship("PhrUser")
