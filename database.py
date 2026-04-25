@@ -11,7 +11,7 @@ raw_database_url = os.getenv("DATABASE_URL")
 if not raw_database_url:
     # Try to construct from components
     db_user = os.getenv("POSTGRES_USER", "postgres")
-    db_pass = os.getenv("POSTGRES_PASSWORD", "")
+    db_pass = os.getenv("POSTGRES_PASSWORD", "").strip()
     db_name = os.getenv("POSTGRES_DB", "phr")
     db_host = os.getenv("POSTGRES_HOST", "localhost")
     
