@@ -13,13 +13,7 @@ def _default_lims_base_url() -> str:
     return "http://localhost:8080"
 
 
-LIMS_LOCAL_BASE_URL = os.getenv(
-    "LIMS_SERVICE_URL",
-    os.getenv(
-        "LIMS_BASE_URL",
-        os.getenv("PHR_LIMS_BASE_URL", _default_lims_base_url()),
-    ),
-)
+LIMS_LOCAL_BASE_URL = os.getenv("LIMS_SERVICE_URL", os.getenv("LIMS_BASE_URL", _default_lims_base_url()))
 LIMS_CLOUD_BASE_URL = os.getenv("LIMS_SERVICE_URL_CLOUD", LIMS_LOCAL_BASE_URL)
 
 _internal_client = InternalServiceClient(

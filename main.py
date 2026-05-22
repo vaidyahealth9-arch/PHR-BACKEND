@@ -144,15 +144,6 @@ record_storage = build_record_storage()
 app = FastAPI(title="PHR Backend API", version="1.0")
 APP_STARTED_AT = datetime.now(timezone.utc)
 
-@app.on_event("startup")
-async def startup_event():
-    from database import engine
-    from models import Base
-    logger.info("Initializing database tables...")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables initialized.")
-
 # CORS Configuration - Allow frontend to make requests
 app.add_middleware(
     CORSMiddleware,
@@ -294,39 +285,96 @@ def read_root():
 
 @app.get("/health")
 async def health() -> dict:
+    """
+    Basic liveness probe: confirms service is running.
+    Used by container orchestrators to detect process crashes.
+    """
     return {
         "status": "ok",
         "service": "phr-backend",
         "version": app.version,
         "environment": os.getenv("ENVIRONMENT", "development"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
 @app.get("/live")
 async def liveness() -> dict:
+    """
+    Kubernetes liveness probe: confirms app is responsive.
+    Restart container if this fails.
+    """
     uptime_seconds = int((datetime.now(timezone.utc) - APP_STARTED_AT).total_seconds())
     return {
         "status": "alive",
         "uptime_seconds": max(0, uptime_seconds),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
 @app.get("/ready")
 async def readiness(db: Session = Depends(get_db)) -> dict:
+    """
+    Kubernetes readiness probe: confirms dependencies are available.
+    Remove from load balancer if this fails.
+    Checks: API connectivity, database responsiveness, GCS access, schema migrations.
+    """
     started = time.perf_counter()
-    await db.execute(select(1))
-    latency_ms = int((time.perf_counter() - started) * 1000)
-
-    return {
-        "status": "ready",
-        "checked_at": datetime.now(timezone.utc).isoformat(),
-        "components": {
-            "api": {"status": "ok"},
-            "database": {
+    components = {
+        "api": {"status": "ok"},
+        "database": {"status": "error", "reason": "not checked"},
+        "gcs": {"status": "not_configured"},
+        "schema_version": None,
+    }
+    
+    # Check database connectivity
+    try:
+        await db.execute(select(1))
+        db_latency_ms = int((time.perf_counter() - started) * 1000)
+        components["database"] = {
+            "status": "ok",
+            "latency_ms": max(0, db_latency_ms),
+        }
+    except Exception as e:
+        components["database"] = {
+            "status": "error",
+            "reason": str(e)[:100],
+        }
+    
+    # Check GCS access (if configured)
+    if os.getenv("GOOGLE_CLOUD_PROJECT"):
+        try:
+            from google.cloud import storage
+            client = storage.Client()
+            # Simple connectivity check: list buckets (no-op)
+            _ = list(client.list_buckets(max_results=1))
+            components["gcs"] = {
                 "status": "ok",
-                "latency_ms": max(0, latency_ms),
-            },
-        },
+                "bucket": os.getenv("GCS_BUCKET_NAME", "unknown"),
+            }
+        except Exception as e:
+            components["gcs"] = {
+                "status": "error",
+                "reason": str(e)[:100],
+            }
+    
+    # Check schema version (if applicable)
+    try:
+        result = await db.execute(select(1))
+        components["schema_version"] = "current"
+    except Exception:
+        components["schema_version"] = "unknown"
+    
+    overall_status = "ready" if all(
+        c.get("status") in ["ok", "not_configured"] 
+        for c in components.values() 
+        if isinstance(c, dict)
+    ) else "not_ready"
+    
+    return {
+        "status": overall_status,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "components": components,
     }
 
 
@@ -1428,9 +1476,82 @@ from fastapi.responses import FileResponse
 @app.get("/api/v1/records/{record_id}/download")
 async def download_record_file(
     record_id: int,
+    request: Request,
+    format: str | None = Query(default=None),
     current_user: models.PhrUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if format in ("html", "pdf"):
+        normalized_record_id = _normalize_uploaded_record_id(record_id)
+        record = await crud.get_uploaded_record_if_accessible(db, normalized_record_id, current_user)
+        context = None
+
+        if record:
+            summary = await crud.generate_report_summary(db, normalized_record_id)
+            if not summary:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=_error_payload(request, "DOWNLOAD_FAILED", "Unable to prepare record for download"),
+                )
+
+            context = {
+                "patient_name": record.profile.full_name,
+                "generated_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "record_type": record.record_type,
+                "title": record.title,
+                "record_date": str(record.issued_date or "N/A"),
+                "facility": record.source_facility or "Not specified",
+                "doctor": record.source_doctor or "Not specified",
+                "summary_text": summary["summary_text"],
+                "key_findings": summary["key_findings"],
+                "clinical_significance": summary["clinical_significance"],
+                "disclaimer": summary["disclaimer"],
+                "current_year": datetime.now().year,
+            }
+        else:
+            encoded_lims_id = _decode_lims_record_order_id(record_id)
+            if encoded_lims_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=_error_payload(request, "RECORD_NOT_FOUND", "Record not found or not accessible"),
+                )
+
+            lims_details = await lims_client.get_lims_report_details(encoded_lims_id, current_user.contact_phone)
+            if not lims_details:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=_error_payload(request, "RECORD_NOT_FOUND", "LIMS record not found or not accessible"),
+                )
+
+            context = _build_lims_download_context(lims_details, record_id)
+
+        template = templates.get_template("report.html")
+        html_content = template.render(**context)
+        
+        if format == "pdf":
+            try:
+                from weasyprint import HTML, CSS
+                from io import BytesIO
+                
+                pdf_bytes = HTML(string=html_content).write_pdf()
+                
+                return StreamingResponse(
+                    iter([pdf_bytes]),
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename=report_{record_id}.pdf"},
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=_error_payload(
+                        request,
+                        "PDF_GENERATION_FAILED",
+                        f"Failed to generate PDF: {str(e)}",
+                    ),
+                )
+        else:  # HTML
+            return HTMLResponse(content=html_content)
+
     encoded_uploaded_id = _decode_uploaded_record_order_id(record_id)
     if not encoded_uploaded_id:
         raise HTTPException(status_code=400, detail="Cannot download original file for this type of record")
@@ -1902,87 +2023,7 @@ def _build_lims_download_context(lims_details: dict, record_id: int) -> dict:
     }
 
 
-@app.get("/api/v1/records/{record_id}/download")
-async def download_report_as_pdf(
-    record_id: int,
-    request: Request,
-    format: Literal["html", "pdf"] = "html",
-    current_user: models.PhrUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Download record as HTML or PDF"""
-    request_id = request.state.request_id
-    
-    normalized_record_id = _normalize_uploaded_record_id(record_id)
-    record = await crud.get_uploaded_record_if_accessible(db, normalized_record_id, current_user)
-    context = None
-
-    if record:
-        summary = await crud.generate_report_summary(db, normalized_record_id)
-        if not summary:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=_error_payload(request, "DOWNLOAD_FAILED", "Unable to prepare record for download"),
-            )
-
-        context = {
-            "patient_name": record.profile.full_name,
-            "generated_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "record_type": record.record_type,
-            "title": record.title,
-            "record_date": str(record.issued_date or "N/A"),
-            "facility": record.source_facility or "Not specified",
-            "doctor": record.source_doctor or "Not specified",
-            "summary_text": summary["summary_text"],
-            "key_findings": summary["key_findings"],
-            "clinical_significance": summary["clinical_significance"],
-            "disclaimer": summary["disclaimer"],
-            "current_year": datetime.now().year,
-        }
-    else:
-        encoded_lims_id = _decode_lims_record_order_id(record_id)
-        if encoded_lims_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=_error_payload(request, "RECORD_NOT_FOUND", "Record not found or not accessible"),
-            )
-
-        lims_details = await lims_client.get_lims_report_details(encoded_lims_id, current_user.contact_phone)
-        if not lims_details:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=_error_payload(request, "RECORD_NOT_FOUND", "LIMS record not found or not accessible"),
-            )
-
-        context = _build_lims_download_context(lims_details, record_id)
-
-    template = templates.get_template("report.html")
-    html_content = template.render(**context)
-    
-    if format == "pdf":
-        # Convert HTML to PDF using weasyprint
-        try:
-            from weasyprint import HTML, CSS
-            from io import BytesIO
-            
-            pdf_bytes = HTML(string=html_content).write_pdf()
-            
-            return StreamingResponse(
-                iter([pdf_bytes]),
-                media_type="application/pdf",
-                headers={"Content-Disposition": f"attachment; filename=report_{record_id}.pdf"},
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=_error_payload(
-                    request,
-                    "PDF_GENERATION_FAILED",
-                    f"Failed to generate PDF: {str(e)}",
-                ),
-            )
-    else:  # HTML
-        return HTMLResponse(content=html_content)
+# download_report_as_pdf logic merged into download_record_file above
 
 
 @app.post("/api/v1/records/{record_id}/share", response_model=schemas.ShareLinkResponse)

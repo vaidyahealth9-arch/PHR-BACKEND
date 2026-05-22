@@ -1,7 +1,48 @@
 from datetime import date
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict, Any
+import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class ApiErrorResponse(BaseModel):
+    """
+    Standard API error response for all PHR endpoints.
+    
+    Ensures consistent error handling across the service.
+    All exceptions are mapped to this schema for client consumption.
+    """
+    timestamp: str
+    status: int
+    error: str
+    message: str
+    path: str
+    trace_id: str
+    details: Optional[Dict[str, Any]] = None
+    
+    @staticmethod
+    def create(
+        status: int,
+        error: str,
+        message: str,
+        path: str,
+        trace_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None
+    ) -> "ApiErrorResponse":
+        """Create error response with auto-generated trace ID if needed"""
+        from datetime import datetime
+        if trace_id is None:
+            trace_id = str(uuid.uuid4())
+        
+        return ApiErrorResponse(
+            timestamp=datetime.utcnow().isoformat(),
+            status=status,
+            error=error,
+            message=message,
+            path=path,
+            trace_id=trace_id,
+            details=details
+        )
 
 
 class Patient(BaseModel):
@@ -310,7 +351,7 @@ class ApiErrorBody(BaseModel):
     details: Optional[dict | list | str] = None
 
 
-class ApiErrorResponse(BaseModel):
+class ApiErrorEnvelope(BaseModel):
     error: ApiErrorBody
 
 

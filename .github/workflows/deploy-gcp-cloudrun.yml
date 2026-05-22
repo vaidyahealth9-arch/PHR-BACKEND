@@ -1,8 +1,6 @@
 name: Deploy to GCP Cloud Run (Keyless)
 
 on:
-  push:
-    branches: [main, development]
   workflow_dispatch:
     inputs:
       environment:
