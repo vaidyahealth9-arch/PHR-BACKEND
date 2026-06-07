@@ -249,7 +249,7 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=_error_payload(
             request,
             code="VALIDATION_ERROR",
