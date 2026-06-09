@@ -218,20 +218,30 @@ async def get_record_details(db: Session, record_id: int, patient_id: int):
     for obs in service_request.observations or []:
         try:
             result_str = str(obs.value_numeric) if obs.value_numeric is not None else obs.value_string
-            status_color = "AMBER"
+            status_color = "GREEN"
 
-            if (
-                obs.value_numeric is not None
-                and obs.reference_range
-                and obs.reference_range.low_value is not None
-                and obs.reference_range.high_value is not None
-            ):
-                if obs.reference_range.low_value <= obs.value_numeric <= obs.reference_range.high_value:
-                    status_color = "GREEN"
-                else:
+            if obs.value_numeric is not None and obs.reference_range:
+                val = float(obs.value_numeric)
+                low = float(obs.reference_range.low_value) if obs.reference_range.low_value is not None else None
+                high = float(obs.reference_range.high_value) if obs.reference_range.high_value is not None else None
+
+                if low is not None and val < low:
                     status_color = "RED"
-            elif obs.interpretation_code and "abnormal" in obs.interpretation_code.lower():
-                status_color = "AMBER"
+                elif high is not None and val > high:
+                    status_color = "RED"
+                elif low is not None and high is not None:
+                    span = high - low
+                    if span > 0:
+                        band = span * 0.1
+                        if val <= (low + band) or val >= (high - band):
+                            status_color = "AMBER"
+
+            if status_color == "GREEN" and obs.interpretation_code:
+                code = obs.interpretation_code.strip().upper()
+                if code in ("H", "HH", "L", "LL", "A", "ABNORMAL", "POSITIVE", "reactive", "POS", "R"):
+                    status_color = "RED"
+                elif "BORDERLINE" in code or "WARN" in code or "AMBER" in code:
+                    status_color = "AMBER"
 
             analytes.append(
                 schemas.Analyte(
@@ -240,7 +250,7 @@ async def get_record_details(db: Session, record_id: int, patient_id: int):
                     unit=obs.unit.name if obs.unit else "",
                     reference_range=obs.reference_range.text_range if obs.reference_range else "",
                     status_color=status_color,
-                    method=obs.test_analyte.test.method if obs.test_analyte and obs.test_analyte.test else "",
+                    method=(obs.test_analyte.test.method or "") if obs.test_analyte and obs.test_analyte.test else "",
                 )
             )
         except Exception:
