@@ -228,6 +228,7 @@ class UserProfile(BaseModel):
     country: Optional[str] = None
     full_name: Optional[str] = None
     age: Optional[int] = None
+    blood_group: Optional[str] = None
 
 
 class UserProfileUpdateRequest(BaseModel):
@@ -243,6 +244,7 @@ class UserProfileUpdateRequest(BaseModel):
     state: Optional[str] = None
     postal_code: Optional[str] = None
     country: Optional[str] = None
+    blood_group: Optional[str] = None
 
     @field_validator(
         "first_name",
