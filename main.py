@@ -690,9 +690,13 @@ def _to_user_profile_response(user: models.PhrUser) -> schemas.UserProfile:
 @app.get("/api/v1/auth/me", response_model=schemas.UserProfile)
 async def get_current_user_profile(
     current_user: models.PhrUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Get the current logged-in user's profile"""
-    return _to_user_profile_response(current_user)
+    primary_profile = await crud.ensure_primary_profile(db, current_user)
+    response_data = _to_user_profile_response(current_user)
+    response_data.blood_group = primary_profile.blood_group
+    return response_data
 
 
 @app.put("/api/v1/auth/me", response_model=schemas.UserProfile)
@@ -702,7 +706,10 @@ async def update_current_user_profile(
     db: Session = Depends(get_db),
 ):
     updated_user = await crud.update_user_profile(db, current_user, payload)
-    return _to_user_profile_response(updated_user)
+    primary_profile = await crud.ensure_primary_profile(db, updated_user)
+    response_data = _to_user_profile_response(updated_user)
+    response_data.blood_group = primary_profile.blood_group
+    return response_data
 
 @app.get("/api/v1/auth/users/by-phone/{phone_number}", response_model=schemas.UserProfile)
 async def get_user_by_phone_number(
@@ -756,11 +763,41 @@ async def get_user_by_phone_number(
         age=age,
     )
 
+
+async def _get_profile_by_id_or_primary(
+    db: Session,
+    current_user: models.PhrUser,
+    profile_id: Optional[str] = None
+) -> Optional[models.Profile]:
+    if profile_id:
+        try:
+            p_id = int(profile_id)
+            return await crud.get_profile_if_accessible(db, p_id, current_user)
+        except ValueError:
+            return None
+    # Default to primary profile
+    profiles = await crud.list_accessible_profiles(db, current_user)
+    return next((p for p in profiles if p.is_primary), None)
+
+
 @app.get("/api/v1/linked/lims/reports")
-async def get_linked_lims_reports(current_user: models.PhrUser = Depends(get_current_user)):
+async def get_linked_lims_reports(
+    profile_id: Optional[str] = Query(default=None),
+    current_user: models.PhrUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Fetch LIMS reports for the current PHR user based on mobile number matching"""
-    logger.info(f"API CALL: get_linked_lims_reports for {current_user.contact_phone}")
-    return await lims_client.get_lims_reports(current_user.contact_phone)
+    logger.info(f"API CALL: get_linked_lims_reports for {current_user.contact_phone}, profile_id={profile_id}")
+    profile = await _get_profile_by_id_or_primary(db, current_user, profile_id)
+    if not profile:
+        return []
+    
+    lims_reports = await lims_client.get_lims_reports(current_user.contact_phone)
+    profile_name_lower = profile.full_name.lower().strip()
+    return [
+        r for r in lims_reports
+        if r.get("patientName", "").lower().strip() == profile_name_lower
+    ]
 
 
 @app.get("/api/v1/linked/lims/reports/{report_id}/pdf")
@@ -788,21 +825,40 @@ async def download_linked_lims_report_pdf(
     return StreamingResponse(
         iter([pdf_bytes]),
         media_type=content_type or "application/pdf",
-        headers={"Content-Disposition": f"inline; filename=report-{report_id}.pdf"},
+        headers={
+            "Content-Disposition": f"inline; filename=report-{report_id}.pdf",
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
     )
 
+
 @app.get("/api/v1/linked/lims/bills")
-async def get_linked_lims_bills(current_user: models.PhrUser = Depends(get_current_user)):
+async def get_linked_lims_bills(
+    profile_id: Optional[str] = Query(default=None),
+    current_user: models.PhrUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Fetch LIMS bills for the current PHR user based on mobile number matching"""
-    logger.info(f"API CALL: get_linked_lims_bills for {current_user.contact_phone}")
-    return await lims_client.get_lims_bills(current_user.contact_phone)
+    logger.info(f"API CALL: get_linked_lims_bills for {current_user.contact_phone}, profile_id={profile_id}")
+    profile = await _get_profile_by_id_or_primary(db, current_user, profile_id)
+    patient_name = profile.full_name if profile else None
+    return await lims_client.get_lims_bills(current_user.contact_phone, patient_name=patient_name)
 
 
 @app.get("/api/v1/linked/lims/analyte-history")
-async def get_linked_lims_analyte_history(current_user: models.PhrUser = Depends(get_current_user)):
+async def get_linked_lims_analyte_history(
+    profile_id: Optional[str] = Query(default=None),
+    current_user: models.PhrUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Fetch LIMS analyte history for the current PHR user based on mobile number matching"""
-    logger.info(f"API CALL: get_linked_lims_analyte_history for {current_user.contact_phone}")
-    return await lims_client.get_lims_analyte_history(current_user.contact_phone)
+    logger.info(f"API CALL: get_linked_lims_analyte_history for {current_user.contact_phone}, profile_id={profile_id}")
+    profile = await _get_profile_by_id_or_primary(db, current_user, profile_id)
+    patient_name = profile.full_name if profile else None
+    res = await lims_client.get_lims_analyte_history(current_user.contact_phone, patient_name=patient_name)
+    return res if res else {"tests": []}
 
 
 def _to_profile_summary(profile: models.Profile) -> schemas.ProfileSummary:
@@ -1597,7 +1653,12 @@ async def download_record_file(
                 return StreamingResponse(
                     iter([pdf_bytes]),
                     media_type="application/pdf",
-                    headers={"Content-Disposition": f"attachment; filename=report_{record_id}.pdf"},
+                    headers={
+                        "Content-Disposition": f"attachment; filename=report_{record_id}.pdf",
+                        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                        "Pragma": "no-cache",
+                        "Expires": "0",
+                    },
                 )
             except Exception as e:
                 raise HTTPException(
@@ -2203,6 +2264,42 @@ async def revoke_share_link(
         )
     
     return {"status": "ok"}
+
+
+@app.delete("/api/v1/records/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_uploaded_record(
+    record_id: int,
+    request: Request,
+    current_user: models.PhrUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete an uploaded record"""
+    normalized_record_id = _normalize_uploaded_record_id(record_id)
+    record = await crud.get_uploaded_record_if_accessible(db, normalized_record_id, current_user)
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error_payload(request, "RECORD_NOT_FOUND", "Record not found or not accessible"),
+        )
+    
+    can_edit = await crud.can_edit_profile(db, record.profile, current_user)
+    if not can_edit:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=_error_payload(request, "DELETE_FORBIDDEN", "You are not allowed to delete this record"),
+        )
+    
+    try:
+        file_path = record.file_path
+        if hasattr(record_storage, "base_dir"):
+            file_path = os.path.join(record_storage.base_dir, file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception as e:
+        logger.error(f"Failed to delete file from storage: {e}")
+
+    await crud.delete_uploaded_record(db, record)
+    return None
 
 
 @app.get("/api/v1/share/{token}")

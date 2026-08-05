@@ -40,10 +40,19 @@ async def create_user(db: Session, user: schemas.UserCreate):
 
 async def update_user_profile(db: Session, user: models.PhrUser, payload: schemas.UserProfileUpdateRequest):
     updates = payload.model_dump(exclude_unset=True)
+    blood_group = updates.pop("blood_group", None)
+    
     for key, value in updates.items():
         setattr(user, key, value)
 
     user.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    
+    if blood_group is not None:
+        primary_profile = await ensure_primary_profile(db, user)
+        primary_profile.blood_group = blood_group
+        primary_profile.updated_at = user.updated_at
+        db.add(primary_profile)
+
     await db.commit()
     await db.refresh(user)
     return user
@@ -526,6 +535,11 @@ async def get_uploaded_record_if_accessible(db: Session, record_id: int, current
         return None
 
     return record
+
+
+async def delete_uploaded_record(db: Session, record: models.UploadedRecord):
+    await db.delete(record)
+    await db.commit()
 
 
 async def create_share_link(

@@ -1,5 +1,6 @@
 import os
 import logging
+from typing import Optional
 
 from integrations.internal_service_client import InternalServiceClient
 
@@ -47,13 +48,16 @@ async def get_lims_reports(mobile: str) -> list[dict]:
         return []
 
 
-async def get_lims_bills(mobile: str) -> list[dict]:
-    logger.info("Fetching LIMS bills for mobile: %s", mobile)
+async def get_lims_bills(mobile: str, patient_name: Optional[str] = None) -> list[dict]:
+    logger.info("Fetching LIMS bills for mobile: %s, patient_name: %s", mobile, patient_name)
+    params = {"mobile": mobile}
+    if patient_name:
+        params["patientName"] = patient_name
     try:
         response = await _internal_client.request(
             method="GET",
             path="/api/integration/phr/bills",
-            params={"mobile": mobile},
+            params=params,
             timeout_seconds=10.0,
             user_mobile=mobile,
         )
@@ -118,13 +122,16 @@ async def get_lims_report_pdf(
         logger.error("LIMS report PDF connection error: %s", str(e))
         return None
 
-async def get_lims_analyte_history(mobile: str) -> dict | None:
-    logger.info("Fetching LIMS analyte history for mobile: %s", mobile)
+async def get_lims_analyte_history(mobile: str, patient_name: Optional[str] = None) -> dict | None:
+    logger.info("Fetching LIMS analyte history for mobile: %s, patient_name: %s", mobile, patient_name)
+    params = {"mobile": mobile}
+    if patient_name:
+        params["patientName"] = patient_name
     try:
         response = await _internal_client.request(
             method="GET",
             path="/api/integration/phr/analyte-history",
-            params={"mobile": mobile},
+            params=params,
             timeout_seconds=15.0,
             user_mobile=mobile,
         )
