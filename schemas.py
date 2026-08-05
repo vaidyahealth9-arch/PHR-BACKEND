@@ -88,6 +88,10 @@ class VerifyOTPRequest(BaseModel):
     otp: str
 
 
+class VerifyFirebaseTokenRequest(BaseModel):
+    id_token: str
+
+
 class Token(BaseModel):
     access_token: str
     refresh_token: str

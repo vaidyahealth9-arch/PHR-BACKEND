@@ -83,13 +83,13 @@ async def authenticated_user(client: AsyncClient, db_session: AsyncSession) -> d
     await db_session.commit()
     await db_session.refresh(profile)
     
-    # Send OTP (returns fixed OTP "123456" for this test phone in development)
+    # Send OTP
     await client.post("/api/v1/auth/send-otp", json={"phone_number": phone})
     
-    # Verify OTP with the fixed test OTP
+    # Verify OTP using the mock Firebase token exchange
     verify_response = await client.post(
-        "/api/v1/auth/verify-otp",
-        json={"phone_number": phone, "otp": "123456"},
+        "/api/v1/auth/verify-firebase-token",
+        json={"id_token": f"mock-firebase-token:{phone}"},
     )
     token_data = verify_response.json()
     access_token = token_data["access_token"]

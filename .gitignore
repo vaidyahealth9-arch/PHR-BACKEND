@@ -117,3 +117,9 @@ phr.db
 
 # Runtime upload artifacts
 uploads/
+
+# Security ignore
+.env.*
+firebase-key.json
+*.key.json
+service-account*.json
