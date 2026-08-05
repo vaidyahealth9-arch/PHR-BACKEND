@@ -15,6 +15,7 @@ Follow-up:
 - Add records list/detail integration tests in Part 4.
 """
 
+import pytest
 from fastapi.testclient import TestClient
 
 from main import app
@@ -49,8 +50,9 @@ def test_liveness_endpoint_reports_alive():
     assert payload["uptime_seconds"] >= 0
 
 
-def test_readiness_endpoint_reports_ready():
-    response = client.get("/ready")
+@pytest.mark.asyncio
+async def test_readiness_endpoint_reports_ready(client):
+    response = await client.get("/ready")
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ready"

@@ -1,7 +1,5 @@
 from datetime import datetime, timedelta, timezone
-
 import pytest
-
 import models
 from main import auth_lifecycle
 
@@ -27,8 +25,8 @@ async def test_send_verify_and_me_flow(client, db_session):
     assert send_response.status_code == 200
 
     verify_response = await client.post(
-        "/api/v1/auth/verify-otp",
-        json={"phone_number": phone, "otp": "123456"},
+        "/api/v1/auth/verify-firebase-token",
+        json={"id_token": f"mock-firebase-token:{phone}"},
     )
     assert verify_response.status_code == 200
 
@@ -42,6 +40,26 @@ async def test_send_verify_and_me_flow(client, db_session):
         headers={"Authorization": f"Bearer {token_payload['access_token']}"},
     )
     assert me_response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_send_verify_otp_direct_flow(client, db_session):
+    phone = "9000000003"
+    await create_user(db_session, phone)
+
+    send_response = await client.post("/api/v1/auth/send-otp", json={"phone_number": phone})
+    assert send_response.status_code == 200
+
+    # Get the OTP generated in development/testing mode (which will be "123456" as per the new main.py)
+    verify_response = await client.post(
+        "/api/v1/auth/verify-otp",
+        json={"phone_number": phone, "otp": "123456"},
+    )
+    assert verify_response.status_code == 200
+    token_payload = verify_response.json()
+    assert token_payload["token_type"] == "bearer"
+    assert token_payload["access_token"]
+    assert token_payload["refresh_token"]
 
 
 @pytest.mark.asyncio
@@ -74,10 +92,11 @@ async def test_expired_otp_rejected(client, db_session):
 
     response = await client.post(
         "/api/v1/auth/verify-otp",
-        json={"phone_number": phone, "otp": "000000"},
+        json={"phone_number": phone, "otp": "123456"},
     )
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "OTP_EXPIRED"
+
 
 
 @pytest.mark.asyncio
@@ -87,8 +106,8 @@ async def test_refresh_token_rotation(client, db_session):
 
     await client.post("/api/v1/auth/send-otp", json={"phone_number": phone})
     verify_response = await client.post(
-        "/api/v1/auth/verify-otp",
-        json={"phone_number": phone, "otp": "123456"},
+        "/api/v1/auth/verify-firebase-token",
+        json={"id_token": f"mock-firebase-token:{phone}"},
     )
     payload = verify_response.json()
 
@@ -115,8 +134,8 @@ async def test_logout_revokes_access_and_refresh_tokens(client, db_session):
 
     await client.post("/api/v1/auth/send-otp", json={"phone_number": phone})
     verify_response = await client.post(
-        "/api/v1/auth/verify-otp",
-        json={"phone_number": phone, "otp": "123456"},
+        "/api/v1/auth/verify-firebase-token",
+        json={"id_token": f"mock-firebase-token:{phone}"},
     )
     payload = verify_response.json()
 

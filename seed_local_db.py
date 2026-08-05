@@ -252,48 +252,49 @@ if __name__ == "__main__":
         # First seed the default user
         await main()
         
-        # Then seed the test user 1231231231
-        print("\nSeeding additional test user 1231231231...")
+        # Then seed the test users
+        test_phones = ["1231231231", "9741937469"]
         import os
         from database import SessionLocal
         import models
         from sqlalchemy import select
         async with SessionLocal() as db:
-            phone = "1231231231"
-            now = _now()
-            
-            # Create User
-            user_res = await db.execute(select(models.PhrUser).where(models.PhrUser.contact_phone == phone))
-            user = user_res.scalars().first()
-            if not user:
-                user = models.PhrUser(
-                    first_name="Test",
-                    last_name="User",
-                    contact_phone=phone,
-                    created_at=now,
-                    updated_at=now
-                )
-                db.add(user)
-                await db.flush()
-                print(f"Created user: {phone}")
-
-            # Create Primary Profile
-            profile_res = await db.execute(select(models.Profile).where(models.Profile.owner_user_id == user.id, models.Profile.is_primary == True))
-            profile = profile_res.scalars().first()
-            if not profile:
-                profile = models.Profile(
-                    owner_user_id=user.id,
-                    full_name="Test User",
-                    relationship_type="self",
-                    is_primary=True,
-                    created_at=now,
-                    updated_at=now
-                )
-                db.add(profile)
-                print(f"Created primary profile for {phone}")
+            for phone in test_phones:
+                print(f"\nSeeding additional test user {phone}...")
+                now = _now()
                 
+                # Create User
+                user_res = await db.execute(select(models.PhrUser).where(models.PhrUser.contact_phone == phone))
+                user = user_res.scalars().first()
+                if not user:
+                    user = models.PhrUser(
+                        first_name="Test",
+                        last_name=f"User {phone[-4:]}",
+                        contact_phone=phone,
+                        created_at=now,
+                        updated_at=now
+                    )
+                    db.add(user)
+                    await db.flush()
+                    print(f"Created user: {phone}")
+
+                # Create Primary Profile
+                profile_res = await db.execute(select(models.Profile).where(models.Profile.owner_user_id == user.id, models.Profile.is_primary == True))
+                profile = profile_res.scalars().first()
+                if not profile:
+                    profile = models.Profile(
+                        owner_user_id=user.id,
+                        full_name=f"Test User {phone[-4:]}",
+                        relationship_type="self",
+                        is_primary=True,
+                        created_at=now,
+                        updated_at=now
+                    )
+                    db.add(profile)
+                    print(f"Created primary profile for {phone}")
+                    
             await db.commit()
-        print("Test user 1231231231 seeded successfully.")
+        print("Test users seeded successfully.")
 
     asyncio.run(run_multiple_seeds())
 
