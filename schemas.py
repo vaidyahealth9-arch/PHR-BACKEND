@@ -92,6 +92,17 @@ class VerifyFirebaseTokenRequest(BaseModel):
     id_token: str
 
 
+class PasswordLoginRequest(BaseModel):
+    identifier: str  # phone or email
+    password: str
+
+
+class SetPasswordRequest(BaseModel):
+    password: str
+
+
+
+
 class Token(BaseModel):
     access_token: str
     refresh_token: str
@@ -186,7 +197,9 @@ class UserCreate(BaseModel):
     last_name: str
     contact_phone: str
     contact_email: Optional[str] = None
+    password: Optional[str] = None
     gender: Optional[str] = None
+
     date_of_birth: Optional[date] = None
     address_line1: Optional[str] = None
     city: Optional[str] = None

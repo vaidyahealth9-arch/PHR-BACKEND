@@ -9,12 +9,16 @@ import models
 from main import app, auth_lifecycle, get_db
 
 
-SQLALCHEMY_TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_auth.db"
+from sqlalchemy.pool import StaticPool
+
+SQLALCHEMY_TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 engine = create_async_engine(
     SQLALCHEMY_TEST_DATABASE_URL,
     connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
 )
+
 TestingSessionLocal = sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -86,11 +90,12 @@ async def authenticated_user(client: AsyncClient, db_session: AsyncSession) -> d
     # Send OTP
     await client.post("/api/v1/auth/send-otp", json={"phone_number": phone})
     
-    # Verify OTP using the mock Firebase token exchange
+    # Verify OTP using backend verify-otp
     verify_response = await client.post(
-        "/api/v1/auth/verify-firebase-token",
-        json={"id_token": f"mock-firebase-token:{phone}"},
+        "/api/v1/auth/verify-otp",
+        json={"phone_number": phone, "otp": "123456"},
     )
+
     token_data = verify_response.json()
     access_token = token_data["access_token"]
     
