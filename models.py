@@ -68,7 +68,9 @@ class PhrUser(Base):
     local_mrn_value = Column(String(255))
     organization_id = Column(Integer)
     otp = Column(String(6))
+    password_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime)
+
     updated_at = Column(DateTime)
 
 

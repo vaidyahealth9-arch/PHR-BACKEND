@@ -10,18 +10,52 @@ import models
 import schemas
 
 
+from passlib.hash import pbkdf2_sha256
+
+
+def hash_password(password: str) -> str:
+    return pbkdf2_sha256.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    if not hashed_password:
+        return False
+    try:
+        return pbkdf2_sha256.verify(plain_password, hashed_password)
+    except Exception:
+        return False
+
+
+
 async def get_user_by_phone(db: Session, phone_number: str):
     result = await db.execute(select(models.PhrUser).filter(models.PhrUser.contact_phone == phone_number))
     return result.scalars().first()
 
 
+async def get_user_by_email_or_phone(db: Session, identifier: str):
+    clean_id = identifier.strip()
+    digits = "".join(ch for ch in clean_id if ch.isdigit())
+    normalized_phone = digits[-10:] if len(digits) >= 10 else clean_id
+    
+    result = await db.execute(
+        select(models.PhrUser).filter(
+            (models.PhrUser.contact_phone == normalized_phone) |
+            (models.PhrUser.contact_phone == clean_id) |
+            (func.lower(models.PhrUser.contact_email) == clean_id.lower())
+        )
+    )
+    return result.scalars().first()
+
+
 async def create_user(db: Session, user: schemas.UserCreate):
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+    hashed_pwd = hash_password(user.password) if user.password else None
     db_user = models.PhrUser(
         first_name=user.first_name,
         last_name=user.last_name,
         contact_phone=user.contact_phone,
         contact_email=user.contact_email,
+        password_hash=hashed_pwd,
         gender=user.gender,
         date_of_birth=user.date_of_birth,
         address_line1=user.address_line1,
@@ -36,6 +70,7 @@ async def create_user(db: Session, user: schemas.UserCreate):
     await db.commit()
     await db.refresh(db_user)
     return db_user
+
 
 
 async def update_user_profile(db: Session, user: models.PhrUser, payload: schemas.UserProfileUpdateRequest):

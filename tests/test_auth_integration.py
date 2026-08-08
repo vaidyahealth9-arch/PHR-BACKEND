@@ -157,3 +157,48 @@ async def test_logout_revokes_access_and_refresh_tokens(client, db_session):
         json={"refresh_token": payload["refresh_token"]},
     )
     assert refresh_response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_password_flow(client, db_session):
+    phone = "9800122898"
+    password = "SecurePassword123!"
+    
+    # 1. Signup with password
+    signup_resp = await client.post(
+        "/api/v1/auth/signup",
+        json={
+            "first_name": "Password",
+            "last_name": "Tester",
+            "contact_phone": phone,
+            "contact_email": "tester@example.com",
+            "password": password
+        }
+    )
+    assert signup_resp.status_code in [200, 201]
+
+
+    # 2. Login with phone + password
+    login_resp = await client.post(
+        "/api/v1/auth/login-password",
+        json={"identifier": phone, "password": password}
+    )
+    assert login_resp.status_code == 200
+    payload = login_resp.json()
+    assert payload["access_token"]
+    assert payload["token_type"] == "bearer"
+
+    # 3. Login with email + password
+    login_email_resp = await client.post(
+        "/api/v1/auth/login-password",
+        json={"identifier": "tester@example.com", "password": password}
+    )
+    assert login_email_resp.status_code == 200
+
+    # 4. Invalid password returns 401
+    invalid_resp = await client.post(
+        "/api/v1/auth/login-password",
+        json={"identifier": phone, "password": "WrongPassword"}
+    )
+    assert invalid_resp.status_code == 401
+
